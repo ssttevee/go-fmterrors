@@ -2,6 +2,7 @@ package fmterrors
 
 import (
 	"bytes"
+	"fmt"
 	"runtime"
 	"runtime/debug"
 
