@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"runtime"
 	"runtime/debug"
+
+	"github.com/pkg/errors"
 )
 
 func trace(err error) errors.StackTrace {
