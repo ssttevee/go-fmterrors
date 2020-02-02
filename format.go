@@ -4,10 +4,11 @@ import (
 	"bytes"
 	"fmt"
 	"runtime"
-	"runtime/debug"
 
 	"github.com/pkg/errors"
 )
+
+const _MaxStackDepth = 32
 
 type tracer interface {
 	StackTrace() errors.StackTrace
@@ -38,26 +39,33 @@ func trace(err error, skip int) errors.StackTrace {
 	}
 
 	if lastTracer == nil {
-		return nil
+		return callers(skip)
 	}
 
 	return lastTracer.StackTrace()
 }
 
-func Format(err error) []byte {
-	trace := trace(err)
-	if trace == nil {
-		buf := bytes.NewBufferString(err.Error() + "\n")
-		buf.Write(debug.Stack())
-		return buf.Bytes()
+func callers(skip int) errors.StackTrace {
+	var pcs [_MaxStackDepth]uintptr
+	n := runtime.Callers(skip+3, pcs[:])
+
+	stack := make(errors.StackTrace, n)
+	for i, pc := range pcs[0:n] {
+		stack[i] = errors.Frame(pc)
 	}
 
+	return stack
+}
+
+// FormatSkip returns the stack trace embedded in the error or,
+// if none was found in the error, the current stack save n frames.
+func FormatSkip(err error, n int) []byte {
 	var buf bytes.Buffer
 	// routine id and state aren't available in pure go, so we hard-coded these
 	fmt.Fprintf(&buf, "%s\ngoroutine 1 [running]:", err)
 
 	// format each frame of the stack to match runtime.Stack's format
-	for _, frame := range trace {
+	for _, frame := range trace(err, n) {
 		pc := uintptr(frame) - 1
 		fn := runtime.FuncForPC(pc)
 		if fn != nil {
@@ -67,4 +75,20 @@ func Format(err error) []byte {
 	}
 
 	return buf.Bytes()
+}
+
+// Format returns the stack trace embedded in the error or,
+// if none was found in the error, the current stack.
+func Format(err error) []byte {
+	return FormatSkip(err, 0)
+}
+
+// FormatSkipString is the same as FormatSkip except a string is returned instead of a byte array.
+func FormatSkipString(err error, skip int) string {
+	return string(FormatSkip(err, skip))
+}
+
+// FormatString is the same as Format except a string is returned instead of a byte array.
+func FormatString(err error) string {
+	return string(Format(err))
 }
