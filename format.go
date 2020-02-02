@@ -9,15 +9,19 @@ import (
 	"github.com/pkg/errors"
 )
 
-func trace(err error) errors.StackTrace {
-	type tracer interface {
-		StackTrace() errors.StackTrace
-	}
+type tracer interface {
+	StackTrace() errors.StackTrace
+}
 
-	type causer interface {
-		Cause() error
-	}
+type causer interface {
+	Cause() error
+}
 
+type unwrapper interface {
+	Unwrap() error
+}
+
+func trace(err error, skip int) errors.StackTrace {
 	var lastTracer tracer
 	for {
 		if tracer, ok := err.(tracer); ok {
@@ -26,6 +30,8 @@ func trace(err error) errors.StackTrace {
 
 		if causer, ok := err.(causer); ok {
 			err = causer.Cause()
+		} else if unwrapper, ok := err.(unwrapper); ok {
+			err = unwrapper.Unwrap()
 		} else {
 			break
 		}
