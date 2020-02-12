@@ -80,7 +80,7 @@ func FormatSkip(err error, n int) []byte {
 // Format returns the stack trace embedded in the error or,
 // if none was found in the error, the current stack.
 func Format(err error) []byte {
-	return FormatSkip(err, 0)
+	return FormatSkip(err, 1)
 }
 
 // FormatSkipString is the same as FormatSkip except a string is returned instead of a byte array.
@@ -90,5 +90,5 @@ func FormatSkipString(err error, skip int) string {
 
 // FormatString is the same as Format except a string is returned instead of a byte array.
 func FormatString(err error) string {
-	return string(Format(err))
+	return string(FormatSkip(err, 1))
 }
