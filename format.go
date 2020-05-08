@@ -22,11 +22,21 @@ type unwrapper interface {
 	Unwrap() error
 }
 
-func trace(err error, skip int) errors.StackTrace {
-	var lastTracer tracer
+func isSameStack(a, b errors.StackTrace) bool {
+	return a[len(a)-2] == b[len(b)-2]
+}
+
+func trace(err error, skip int) []uintptr {
+	var stacks []errors.StackTrace
+
 	for {
 		if tracer, ok := err.(tracer); ok {
-			lastTracer = tracer
+			stack := tracer.StackTrace()
+			if len(stacks) == 0 || !isSameStack(stack, stacks[len(stacks)-1]) {
+				stacks = append(stacks, stack)
+			}
+
+			stacks[len(stacks)-1] = stack
 		}
 
 		if causer, ok := err.(causer); ok {
@@ -38,23 +48,30 @@ func trace(err error, skip int) errors.StackTrace {
 		}
 	}
 
-	if lastTracer == nil {
+	if len(stacks) == 0 {
 		return callers(skip)
 	}
 
-	return lastTracer.StackTrace()
-}
-
-func callers(skip int) errors.StackTrace {
-	var pcs [_MaxStackDepth]uintptr
-	n := runtime.Callers(skip+3, pcs[:])
-
-	stack := make(errors.StackTrace, n)
-	for i, pc := range pcs[0:n] {
-		stack[i] = errors.Frame(pc)
+	var frames int
+	for _, stack := range stacks {
+		frames += len(stack)
 	}
 
-	return stack
+	merged := make([]uintptr, 0, frames)
+	for i := len(stacks) - 1; i >= 0; i-- {
+		stack := stacks[i]
+		for _, frame := range stack[:len(stack)-1] {
+			merged = append(merged, uintptr(frame))
+		}
+	}
+
+	return append(merged, uintptr(stacks[0][len(stacks[0])-1]))
+}
+
+func callers(skip int) []uintptr {
+	var pcs [_MaxStackDepth]uintptr
+	n := runtime.Callers(skip+3, pcs[:])
+	return pcs[0:n]
 }
 
 // FormatSkip returns the stack trace embedded in the error or,
@@ -65,8 +82,8 @@ func FormatSkip(err error, n int) []byte {
 	fmt.Fprintf(&buf, "%s\ngoroutine 1 [running]:", err)
 
 	// format each frame of the stack to match runtime.Stack's format
-	for _, frame := range trace(err, n) {
-		pc := uintptr(frame) - 1
+	for _, frame := range trace(err, n+1) {
+		pc := frame - 1
 		fn := runtime.FuncForPC(pc)
 		if fn != nil {
 			file, line := fn.FileLine(pc)
@@ -85,7 +102,7 @@ func Format(err error) []byte {
 
 // FormatSkipString is the same as FormatSkip except a string is returned instead of a byte array.
 func FormatSkipString(err error, skip int) string {
-	return string(FormatSkip(err, skip))
+	return string(FormatSkip(err, skip+1))
 }
 
 // FormatString is the same as Format except a string is returned instead of a byte array.
